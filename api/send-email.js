@@ -1,16 +1,25 @@
 ﻿import { Resend } from 'resend';
 
 export default async function handler(req, res) {
+  // 1. Allow CORS (Fixes some cross-origin issues)
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // CLEAN: No "VITE_" prefix here. This is a secure server secret.
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
-    console.error("❌ Server Error: RESEND_API_KEY is missing.");
-    return res.status(500).json({ error: 'Server Config Error' });
+    return res.status(500).json({ 
+      error: 'Configuration Error', 
+      details: 'RESEND_API_KEY is missing on the server.' 
+    });
   }
 
   const resend = new Resend(apiKey);
@@ -19,26 +28,29 @@ export default async function handler(req, res) {
   try {
     const data = await resend.emails.send({
       from: 'CPA Platform <onboarding@resend.dev>',
-      to: [toEmail],
+      to: [toEmail], // MUST be your verified email on Free Tier
       subject: `New Client Assigned: ${clientName}`,
       html: `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h2 style="color: #006FBA;">New Assignment</h2>
-          <p>Hello <strong>${toName}</strong>,</p>
-          <p>You have been assigned a new client.</p>
-          <p><strong>Client:</strong> ${clientName}</p>
-          <p><strong>Package:</strong> ${packageName}</p>
-          <br />
-          <a href="https://cpa-canada.vercel.app/dashboard">Login to Dashboard</a>
-        </div>
+        <p>Hello <strong>${toName}</strong>,</p>
+        <p>You have a new client: <strong>${clientName}</strong> (${packageName})</p>
       `,
     });
 
-    if (data.error) throw new Error(data.error.message);
+    if (data.error) {
+      console.error("Resend API Rejected:", data.error);
+      return res.status(400).json({ 
+        error: 'Email Rejected by Resend', 
+        details: data.error.message, 
+        hint: 'On free tier, you can only send to your own email.' 
+      });
+    }
+
     return res.status(200).json(data);
 
   } catch (error) {
-    console.error("Resend Error:", error.message);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ 
+      error: 'Server Execution Error', 
+      details: error.message 
+    });
   }
 }
