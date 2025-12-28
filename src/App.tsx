@@ -9,7 +9,7 @@ import SMBDashboard from './pages/dashboards/SMBDashboard';
 import CPADashboard from './pages/dashboards/CPADashboard';
 import AdminDashboard from './pages/dashboards/AdminDashboard';
 import ChatPage from './pages/ChatPage';
-import SettingsPage from './pages/SettingsPage'; // <--- Import
+import SettingsPage from './pages/SettingsPage';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -49,6 +49,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/pricing" element={<Pricing />} />
+          
+          {/* Restored Auth Routing */}
           <Route path="/login" element={<AuthPage type="login" />} />
           <Route path="/signup/:role" element={<AuthPage type="signup" />} />
           
@@ -64,7 +66,6 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* Settings Route */}
           <Route path="/settings" element={
             <ProtectedRoute>
               <SettingsPage />

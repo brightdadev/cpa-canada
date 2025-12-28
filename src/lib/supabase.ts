@@ -1,11 +1,9 @@
 ﻿import { createClient } from '@supabase/supabase-js'
 import { Database } from '../types/supabase'
+import { Config } from '../config' // <--- Clean Import
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing Supabase Environment Variables')
+if (!Config.Supabase.Url || !Config.Supabase.AnonKey) {
+    throw new Error('Supabase Configuration Missing. Check src/config.ts')
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient<Database>(Config.Supabase.Url, Config.Supabase.AnonKey)
