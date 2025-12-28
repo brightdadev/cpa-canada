@@ -19,29 +19,20 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      // Fetch Orders
-      const { data: ordersData, error: ordersError } = await supabase
+      const { data: ordersData } = await supabase
         .from('orders')
-        .select(`
-          *,
-          profiles:smb_id ( full_name, business_name, email )
-        `)
+        .select(`*, profiles:smb_id ( full_name, business_name, email )`)
         .order('created_at', { ascending: false });
 
-      if (ordersError) throw ordersError;
-
-      // Fetch CPAs
-      const { data: cpasData, error: cpasError } = await supabase
+      const { data: cpasData } = await supabase
         .from('profiles')
         .select('*')
         .eq('role', 'cpa');
 
-      if (cpasError) throw cpasError;
-
       setOrders(ordersData || []);
       setCpas(cpasData || []);
-    } catch (error: any) {
-      toast.error('Could not sync data: ' + error.message);
+    } catch (error) {
+      toast.error('Sync failed');
     } finally {
       setLoading(false);
     }
@@ -50,32 +41,44 @@ export default function AdminDashboard() {
   const handleMatchConfirm = async () => {
     if (!selectedOrder || !selectedCPA) return;
 
+    // 1. Find Data for Email
+    const order = orders.find(o => o.id === selectedOrder);
+    const cpa = cpas.find(c => c.id === selectedCPA);
+
+    if (!order || !cpa) return;
+
+    const toastId = toast.loading('Assigning & Notifying CPA...');
+
     try {
+      // 2. Database Update
       const { error } = await supabase
         .from('orders')
-        .update({ 
-          cpa_id: selectedCPA, 
-          status: 'active' 
-        })
+        .update({ cpa_id: selectedCPA, status: 'active' })
         .eq('id', selectedOrder);
 
       if (error) throw error;
+
+      // 3. Send Email Notification (Via Vercel API)
+      await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toEmail: cpa.email, // In Prod, this must be YOUR verified email (Resend Sandbox)
+          toName: cpa.full_name,
+          clientName: order.profiles?.business_name,
+          packageName: order.package_name
+        })
+      });
       
-      toast.custom((t) => (
-        <div className="bg-white border-l-4 border-accent-green p-4 rounded shadow-lg flex items-center gap-3">
-           <CheckCircle className="text-accent-green" />
-           <div>
-             <p className="font-bold text-gray-800">Match Successful!</p>
-             <p className="text-sm text-gray-500">CPA has been notified.</p>
-           </div>
-        </div>
-      ));
+      // 4. Success UI
+      toast.success('Assigned & Email Sent!', { id: toastId });
       
       setSelectedOrder(null);
       setSelectedCPA("");
       fetchData(); 
     } catch (err: any) {
-      toast.error('Matching failed: ' + err.message);
+      toast.error('Assignment worked, but email failed.', { id: toastId });
+      console.error(err);
     }
   };
 
@@ -83,7 +86,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navbar */}
       <nav className="bg-brand-900 text-white p-4 shadow-lg sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <h1 className="text-lg font-bold flex items-center gap-2 tracking-wide">
@@ -127,7 +129,6 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* Footer Action Area */}
                 {order.status === 'pending_match' ? (
                   <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
                     <span className="text-xs font-semibold text-gray-400 uppercase">Action Required</span>
@@ -157,11 +158,7 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2">
             {cpas.length === 0 ? (
                 <div className="text-center py-8 px-4">
-                  <div className="bg-gray-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400">
-                    <User size={24} />
-                  </div>
                   <p className="text-gray-500 font-medium">No CPAs Found</p>
-                  <p className="text-xs text-gray-400 mt-1">Create an account at /signup/cpa</p>
                 </div>
             ) : (
                 <ul className="divide-y divide-gray-50">
@@ -183,7 +180,6 @@ export default function AdminDashboard() {
 
       </main>
 
-      {/* Assignment Modal */}
       <Modal 
         isOpen={!!selectedOrder} 
         onClose={() => setSelectedOrder(null)} 
@@ -192,7 +188,7 @@ export default function AdminDashboard() {
         <div className="space-y-4">
           <div className="bg-blue-50 p-4 rounded-lg text-sm text-blue-800">
             <p className="font-bold">Instructions:</p>
-            <p>Select a qualified CPA from the list below. This will grant them access to the SMB's documents and chat.</p>
+            <p>Select a qualified CPA. They will receive an email notification instantly.</p>
           </div>
 
           <div>
@@ -212,18 +208,11 @@ export default function AdminDashboard() {
           </div>
 
           <div className="flex gap-3 mt-6">
-            <button 
-              onClick={() => setSelectedOrder(null)}
-              className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-lg transition"
-            >
+            <button onClick={() => setSelectedOrder(null)} className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-lg transition">
               Cancel
             </button>
-            <button 
-              onClick={handleMatchConfirm}
-              disabled={!selectedCPA}
-              className="flex-1 py-3 bg-brand-600 disabled:bg-gray-300 text-white font-bold rounded-lg shadow-md hover:bg-brand-700 transition"
-            >
-              Confirm Assignment
+            <button onClick={handleMatchConfirm} disabled={!selectedCPA} className="flex-1 py-3 bg-brand-600 disabled:bg-gray-300 text-white font-bold rounded-lg shadow-md hover:bg-brand-700 transition">
+              Assign & Notify
             </button>
           </div>
         </div>

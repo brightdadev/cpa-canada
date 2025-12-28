@@ -8,7 +8,8 @@ import Pricing from './pages/Pricing';
 import SMBDashboard from './pages/dashboards/SMBDashboard';
 import CPADashboard from './pages/dashboards/CPADashboard';
 import AdminDashboard from './pages/dashboards/AdminDashboard';
-import ChatPage from './pages/ChatPage'; // <--- Import Chat
+import ChatPage from './pages/ChatPage';
+import SettingsPage from './pages/SettingsPage'; // <--- Import
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -57,10 +58,16 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* New Chat Route */}
           <Route path="/chat/:orderId" element={
             <ProtectedRoute>
               <ChatPage />
+            </ProtectedRoute>
+          } />
+
+          {/* Settings Route */}
+          <Route path="/settings" element={
+            <ProtectedRoute>
+              <SettingsPage />
             </ProtectedRoute>
           } />
           
