@@ -1,13 +1,10 @@
-﻿// 1. Centralize all Environment Variables here.
-// This is the ONLY file that touches "import.meta.env" or "VITE_" tags.
-
-const getEnv = (key: string): string => {
+﻿const getEnv = (key: string, required = true): string => {
   const value = import.meta.env[key];
-  if (!value) {
+  if (!value && required) {
     console.warn(`⚠️ Missing Environment Variable: ${key}`);
     return '';
   }
-  return value;
+  return value || '';
 };
 
 export const Config = {
@@ -24,6 +21,7 @@ export const Config = {
     AppId: getEnv('VITE_FIREBASE_APP_ID'),
   },
   Stripe: {
-    PublicKey: getEnv('VITE_STRIPE_PUBLIC_KEY'),
+    // Pass false to make it optional, silencing the warning
+    PublicKey: getEnv('VITE_STRIPE_PUBLIC_KEY', false),
   }
 };

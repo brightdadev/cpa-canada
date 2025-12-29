@@ -1,6 +1,9 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { User, Briefcase, CheckCircle, AlertCircle } from 'lucide-react';
+import { 
+  Users, Briefcase, CheckCircle, AlertCircle, DollarSign, 
+  Search, ShieldCheck, Clock, Filter, ChevronLeft, ChevronRight 
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../../components/ui/Modal';
 
@@ -8,8 +11,13 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<any[]>([]);
   const [cpas, setCpas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'orders' | 'cpas'>('orders');
   
-  // Modal State
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+
+  const [stats, setStats] = useState({ revenue: 0, pending: 0, verified_cpas: 0 });
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [selectedCPA, setSelectedCPA] = useState<string>("");
 
@@ -27,10 +35,21 @@ export default function AdminDashboard() {
       const { data: cpasData } = await supabase
         .from('profiles')
         .select('*')
-        .eq('role', 'cpa');
+        .eq('role', 'cpa')
+        .order('created_at', { ascending: false });
 
-      setOrders(ordersData || []);
-      setCpas(cpasData || []);
+      const oList = ordersData || [];
+      const cList = cpasData || [];
+
+      setOrders(oList);
+      setCpas(cList);
+
+      const rev = oList.reduce((sum, ord) => sum + (Number(ord.amount) || 0), 0);
+      const pen = oList.filter(o => o.status === 'pending_match').length;
+      const ver = cList.filter(c => c.verified).length;
+
+      setStats({ revenue: rev, pending: pen, verified_cpas: ver });
+
     } catch (error) {
       toast.error('Sync failed');
     } finally {
@@ -40,146 +59,204 @@ export default function AdminDashboard() {
 
   const handleMatchConfirm = async () => {
     if (!selectedOrder || !selectedCPA) return;
-
-    // 1. Find Data for Email
     const order = orders.find(o => o.id === selectedOrder);
     const cpa = cpas.find(c => c.id === selectedCPA);
-
     if (!order || !cpa) return;
 
-    const toastId = toast.loading('Assigning & Notifying CPA...');
+    const toastId = toast.loading('Processing...');
 
     try {
-      // 2. Database Update
+      try {
+        await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            toEmail: cpa.email,
+            toName: cpa.full_name,
+            clientName: order.profiles?.business_name,
+            packageName: order.package_name
+          })
+        });
+      } catch (e) { console.warn("Email skipped"); }
+
       const { error } = await supabase
         .from('orders')
         .update({ cpa_id: selectedCPA, status: 'active' })
         .eq('id', selectedOrder);
 
       if (error) throw error;
-
-      // 3. Send Email Notification (Via Vercel API)
-      await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          toEmail: cpa.email, // In Prod, this must be YOUR verified email (Resend Sandbox)
-          toName: cpa.full_name,
-          clientName: order.profiles?.business_name,
-          packageName: order.package_name
-        })
-      });
       
-      // 4. Success UI
-      toast.success('Assigned & Email Sent!', { id: toastId });
-      
+      toast.success('Assignment Complete!', { id: toastId });
       setSelectedOrder(null);
       setSelectedCPA("");
       fetchData(); 
     } catch (err: any) {
-      toast.error('Assignment worked, but email failed.', { id: toastId });
-      console.error(err);
+      toast.error(`Error: ${err.message}`, { id: toastId });
     }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-brand-600 font-medium animate-pulse">Loading Command Center...</div>;
+  const toggleVerification = async (cpaId: string, currentStatus: boolean) => {
+    const { error } = await supabase.from('profiles').update({ verified: !currentStatus }).eq('id', cpaId);
+    if (!error) {
+      toast.success(currentStatus ? 'CPA Unverified' : 'CPA Verified');
+      fetchData();
+    }
+  };
+
+  // --- Pagination Logic ---
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  
+  const currentOrders = orders.slice(indexOfFirstItem, indexOfLastItem);
+  const currentCPAs = cpas.slice(indexOfFirstItem, indexOfLastItem);
+  
+  const totalPages = Math.ceil((activeTab === 'orders' ? orders.length : cpas.length) / itemsPerPage);
+
+  const nextPage = () => {
+    if (currentPage < totalPages) setCurrentPage(currentPage + 1);
+  };
+
+  const prevPage = () => {
+    if (currentPage > 1) setCurrentPage(currentPage - 1);
+  };
+
+  if (loading) return <div className="h-96 flex items-center justify-center text-gray-400">Loading Command Center...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-brand-900 text-white p-4 shadow-lg sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <h1 className="text-lg font-bold flex items-center gap-2 tracking-wide">
-            <Briefcase size={20} className="text-accent-lightGreen" /> ADMIN COMMAND
-          </h1>
-          <div className="text-xs font-bold bg-white/10 px-3 py-1 rounded-full border border-white/20">SUPER ADMIN</div>
+    <div className="space-y-8 animate-in fade-in duration-500">
+      
+      {/* Stats Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-brand-900 text-white p-6 rounded-xl shadow-md relative overflow-hidden">
+           <div className="relative z-10">
+             <p className="text-brand-200 text-sm font-medium uppercase tracking-wider">Total Revenue</p>
+             <h3 className="text-3xl font-bold mt-1">${stats.revenue.toLocaleString()}</h3>
+           </div>
+           <DollarSign className="absolute right-4 bottom-4 text-brand-800 w-16 h-16 opacity-50" />
         </div>
-      </nav>
+        <div className="bg-white border border-gray-200 p-6 rounded-xl shadow-sm flex items-center justify-between">
+           <div>
+             <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Pending Orders</p>
+             <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.pending}</h3>
+           </div>
+           <div className="bg-orange-100 p-3 rounded-full text-orange-600"><Clock size={24} /></div>
+        </div>
+        <div className="bg-white border border-gray-200 p-6 rounded-xl shadow-sm flex items-center justify-between">
+           <div>
+             <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Verified CPAs</p>
+             <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.verified_cpas} <span className="text-sm text-gray-400 font-normal">/ {cpas.length}</span></h3>
+           </div>
+           <div className="bg-green-100 p-3 rounded-full text-green-600"><ShieldCheck size={24} /></div>
+        </div>
+      </div>
 
-      <main className="max-w-7xl mx-auto p-6 grid lg:grid-cols-3 gap-8">
+      {/* Main Content Tabs */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden min-h-[500px] flex flex-col">
         
-        {/* Orders Column */}
-        <div className="lg:col-span-2 space-y-6">
-          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2 border-b pb-2">
-            <AlertCircle className="text-brand-600" /> Incoming Orders
-            <span className="bg-brand-100 text-brand-700 text-xs px-2 py-1 rounded-full ml-auto">
-              {orders.length} Total
-            </span>
-          </h2>
-          
-          <div className="space-y-4">
-            {orders.map((order) => (
-              <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition duration-200 group">
-                <div className="p-5 flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-brand-900 text-lg group-hover:text-brand-600 transition">{order.package_name}</h3>
-                    <div className="flex flex-col gap-0.5 mt-1">
-                       <span className="font-semibold text-gray-700">{order.profiles?.business_name || "Unknown Business"}</span>
-                       <span className="text-sm text-gray-500">{order.profiles?.full_name}</span>
-                       <span className="text-xs text-gray-400">{order.profiles?.email}</span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-extrabold text-brand-600 tracking-tight">${order.amount}</div>
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold mt-2 uppercase tracking-wide ${
-                      order.status === 'pending_match' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
-                    }`}>
-                      {order.status === 'active' && <CheckCircle size={12} />}
-                      {order.status.replace('_', ' ')}
-                    </span>
-                  </div>
-                </div>
-
-                {order.status === 'pending_match' ? (
-                  <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
-                    <span className="text-xs font-semibold text-gray-400 uppercase">Action Required</span>
-                    <button 
-                      onClick={() => { setSelectedOrder(order.id); setSelectedCPA(""); }}
-                      className="bg-brand-600 hover:bg-brand-700 text-white px-5 py-2 rounded-lg text-sm font-bold shadow-sm transition hover:-translate-y-0.5 active:translate-y-0"
-                    >
-                      Assign CPA
-                    </button>
-                  </div>
-                ) : (
-                  <div className="px-5 py-3 bg-green-50/50 border-t border-green-100 flex items-center gap-2 text-xs font-medium text-green-800">
-                    <CheckCircle size={14} /> 
-                    Matched to CPA ID: <span className="font-mono bg-white px-1 rounded border border-green-200">{order.cpa_id?.slice(0,8)}...</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+        {/* Tab Header */}
+        <div className="border-b border-gray-200 px-6 pt-4 flex gap-8">
+          <button onClick={() => { setActiveTab('orders'); setCurrentPage(1); }} className={`pb-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'orders' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Order Management</button>
+          <button onClick={() => { setActiveTab('cpas'); setCurrentPage(1); }} className={`pb-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'cpas' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>CPA Roster</button>
         </div>
 
-        {/* CPA List Column */}
-        <div className="space-y-6">
-          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2 border-b pb-2">
-            <User className="text-brand-600" /> CPA Roster
-          </h2>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2">
-            {cpas.length === 0 ? (
-                <div className="text-center py-8 px-4">
-                  <p className="text-gray-500 font-medium">No CPAs Found</p>
+        {/* TAB CONTENT: ORDERS */}
+        {activeTab === 'orders' && (
+          <div className="flex-1 flex flex-col">
+            <div className="bg-gray-50 px-6 py-3 border-b border-gray-100 flex justify-between items-center">
+               <div className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1"><Filter size={14} /> Incoming Orders</div>
+               <span className="text-xs bg-gray-200 px-2 py-1 rounded text-gray-600">Page {currentPage} of {totalPages}</span>
+            </div>
+
+            <div className="divide-y divide-gray-100 flex-1">
+              {currentOrders.map(order => (
+                <div key={order.id} className="p-6 hover:bg-gray-50 transition flex flex-col md:flex-row md:items-center justify-between gap-4">
+                   <div className="flex items-start gap-4">
+                      <div className={`p-3 rounded-lg ${order.status === 'pending_match' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
+                        {order.status === 'pending_match' ? <AlertCircle size={24} /> : <CheckCircle size={24} />}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-gray-900 text-lg">{order.package_name}</h4>
+                        <div className="text-sm text-gray-500 mt-1">Client: <span className="font-medium text-gray-900">{order.profiles?.business_name || 'Unknown'}</span> <span className="mx-2">•</span> {order.profiles?.email}</div>
+                        <div className="text-xs text-gray-400 mt-1 font-mono">ID: {order.id.slice(0,8)}...</div>
+                      </div>
+                   </div>
+                   <div className="flex items-center gap-4">
+                      <div className="text-right mr-4">
+                         <div className="font-bold text-xl text-brand-600">${order.amount}</div>
+                         <div className="text-xs text-gray-400 capitalize">{order.status.replace('_', ' ')}</div>
+                      </div>
+                      {order.status === 'pending_match' ? (
+                        <button onClick={() => { setSelectedOrder(order.id); setSelectedCPA(""); }} className="bg-brand-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-sm hover:bg-brand-700 transition">Assign CPA</button>
+                      ) : (
+                        <div className="bg-gray-100 px-4 py-2 rounded-lg text-xs font-bold text-gray-500">Assigned</div>
+                      )}
+                   </div>
                 </div>
-            ) : (
-                <ul className="divide-y divide-gray-50">
-                {cpas.map(cpa => (
-                    <li key={cpa.id} className="p-3 hover:bg-gray-50 transition rounded-lg flex items-center gap-3 group cursor-default">
-                    <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm border-2 border-white shadow-sm">
-                        {cpa.full_name?.substring(0,2).toUpperCase()}
-                    </div>
-                    <div>
-                        <div className="font-bold text-sm text-gray-900">{cpa.full_name}</div>
-                        <div className="text-xs text-brand-600 font-medium">{cpa.specialty || 'General Practice'}</div>
-                    </div>
-                    </li>
+              ))}
+              {currentOrders.length === 0 && <div className="p-8 text-center text-gray-500">No orders found.</div>}
+            </div>
+          </div>
+        )}
+
+        {/* TAB CONTENT: CPAS */}
+        {activeTab === 'cpas' && (
+          <div className="flex-1 flex flex-col">
+             <table className="w-full text-left text-sm flex-1">
+                <thead className="bg-gray-50 border-b border-gray-100 text-gray-500 uppercase text-xs">
+                <tr>
+                    <th className="px-6 py-4 font-bold">Name / License</th>
+                    <th className="px-6 py-4 font-bold">Specialty</th>
+                    <th className="px-6 py-4 font-bold">Experience</th>
+                    <th className="px-6 py-4 font-bold text-center">Status</th>
+                    <th className="px-6 py-4 font-bold text-right">Actions</th>
+                </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                {currentCPAs.map(cpa => (
+                    <tr key={cpa.id} className="hover:bg-gray-50 transition">
+                    <td className="px-6 py-4">
+                        <div className="font-bold text-gray-900">{cpa.full_name}</div>
+                        <div className="text-xs text-gray-500">{cpa.email}</div>
+                    </td>
+                    <td className="px-6 py-4"><span className="bg-blue-50 text-brand-700 px-2 py-1 rounded text-xs font-bold">{cpa.specialty || 'General'}</span></td>
+                    <td className="px-6 py-4 text-gray-600">{cpa.years_experience ? `${cpa.years_experience} Years` : '-'}</td>
+                    <td className="px-6 py-4 text-center">
+                        {cpa.verified ? <span className="inline-flex items-center gap-1 text-green-600 font-bold text-xs"><ShieldCheck size={14}/> Verified</span> : <span className="text-orange-500 font-bold text-xs">Pending</span>}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                        <button onClick={() => toggleVerification(cpa.id, cpa.verified)} className={`px-3 py-1.5 rounded-md text-xs font-bold transition border ${cpa.verified ? 'border-gray-300 text-gray-600 hover:bg-gray-100' : 'bg-green-600 border-transparent text-white hover:bg-green-700'}`}>
+                        {cpa.verified ? 'Revoke' : 'Verify'}
+                        </button>
+                    </td>
+                    </tr>
                 ))}
-                </ul>
-            )}
+                </tbody>
+            </table>
           </div>
+        )}
+
+        {/* Pagination Controls */}
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-between items-center">
+            <button 
+                onClick={prevPage} 
+                disabled={currentPage === 1}
+                className="flex items-center gap-1 px-3 py-2 border rounded-md text-sm font-medium bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <ChevronLeft size={16} /> Previous
+            </button>
+            <span className="text-sm text-gray-600 font-medium">Page {currentPage} of {totalPages || 1}</span>
+            <button 
+                onClick={nextPage} 
+                disabled={currentPage >= totalPages}
+                className="flex items-center gap-1 px-3 py-2 border rounded-md text-sm font-medium bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                Next <ChevronRight size={16} />
+            </button>
         </div>
 
-      </main>
+      </div>
 
+      {/* Assignment Modal */}
       <Modal 
         isOpen={!!selectedOrder} 
         onClose={() => setSelectedOrder(null)} 
@@ -187,33 +264,20 @@ export default function AdminDashboard() {
       >
         <div className="space-y-4">
           <div className="bg-blue-50 p-4 rounded-lg text-sm text-blue-800">
-            <p className="font-bold">Instructions:</p>
-            <p>Select a qualified CPA. They will receive an email notification instantly.</p>
+            Select a verified CPA to handle this client. They will receive an email notification.
           </div>
-
           <div>
-             <label className="block text-sm font-medium text-gray-700 mb-1">Select CPA</label>
-             <select 
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-600 outline-none bg-white"
-                value={selectedCPA}
-                onChange={(e) => setSelectedCPA(e.target.value)}
-             >
-                <option value="">-- Choose a Professional --</option>
-                {cpas.map(cpa => (
-                  <option key={cpa.id} value={cpa.id}>
-                    {cpa.full_name} • {cpa.specialty || 'General'}
-                  </option>
+             <label className="block text-sm font-medium text-gray-700 mb-1">Select Professional</label>
+             <select className="w-full p-3 border border-gray-300 rounded-lg bg-white" value={selectedCPA} onChange={(e) => setSelectedCPA(e.target.value)}>
+                <option value="">-- Choose a CPA --</option>
+                {cpas.filter(c => c.verified).map(cpa => (
+                  <option key={cpa.id} value={cpa.id}>{cpa.full_name} • {cpa.specialty}</option>
                 ))}
              </select>
           </div>
-
           <div className="flex gap-3 mt-6">
-            <button onClick={() => setSelectedOrder(null)} className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-lg transition">
-              Cancel
-            </button>
-            <button onClick={handleMatchConfirm} disabled={!selectedCPA} className="flex-1 py-3 bg-brand-600 disabled:bg-gray-300 text-white font-bold rounded-lg shadow-md hover:bg-brand-700 transition">
-              Assign & Notify
-            </button>
+            <button onClick={() => setSelectedOrder(null)} className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-lg">Cancel</button>
+            <button onClick={handleMatchConfirm} disabled={!selectedCPA} className="flex-1 py-3 bg-brand-600 text-white font-bold rounded-lg hover:bg-brand-700 disabled:opacity-50">Confirm</button>
           </div>
         </div>
       </Modal>
