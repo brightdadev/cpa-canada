@@ -11,20 +11,24 @@ interface AuthPageProps {
 export default function AuthPage({ type }: AuthPageProps) {
   const { role } = useParams<{ role: string }>(); 
   const navigate = useNavigate();
-  const { user } = useAuth(); // <--- Listen to Global User State
+  const { user, loading: authLoading } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // 1. REACTIVE NAVIGATION: Move ONLY when user state is ready
+  // 1. Redirect if already logged in
   useEffect(() => {
-    if (user) {
-      // If we are already logged in (or just logged in), go to dashboard
+    if (user && !authLoading) {
       navigate('/dashboard');
     }
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
+
+  // 2. PREVENT FLASHING: If user exists or initial load is happening, show nothing/spinner
+  if (authLoading || user) {
+    return <div className="min-h-screen flex items-center justify-center bg-brand-50 text-brand-600">Checking credentials...</div>;
+  }
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,22 +54,18 @@ export default function AuthPage({ type }: AuthPageProps) {
         });
 
         if (profileError) console.warn("Profile creation delayed:", profileError);
-
-        toast.success('Account created! Welcome.');
-        // Don't navigate here manually. The useEffect will handle it.
-        
+        toast.success('Account created!');
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
-        toast.success('Welcome back!');
-        // Don't navigate here manually. The useEffect will handle it.
+        toast.success('Login successful');
       }
     } catch (err: any) {
       toast.error(err.message || "Authentication failed");
-      setLoading(false); // Only stop loading if there was an error
+      setLoading(false);
     }
   };
 
@@ -91,7 +91,7 @@ export default function AuthPage({ type }: AuthPageProps) {
                 type="text" 
                 required 
                 autoComplete="name"
-                className="mt-1 block w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none transition"
+                className="mt-1 block w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
               />
@@ -104,7 +104,7 @@ export default function AuthPage({ type }: AuthPageProps) {
               type="email" 
               required 
               autoComplete="username"
-              className="mt-1 block w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none transition"
+              className="mt-1 block w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
@@ -116,7 +116,7 @@ export default function AuthPage({ type }: AuthPageProps) {
               type="password" 
               required 
               autoComplete={type === 'signup' ? 'new-password' : 'current-password'}
-              className="mt-1 block w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none transition"
+              className="mt-1 block w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />

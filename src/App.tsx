@@ -4,7 +4,7 @@ import { Toaster } from 'react-hot-toast';
 
 // Pages
 import Landing from './pages/Landing';
-import AuthPage from './pages/AuthPage'; // <--- Using existing AuthPage
+import AuthPage from './pages/AuthPage';
 import Pricing from './pages/Pricing';
 import SMBDashboard from './pages/dashboards/SMBDashboard';
 import CPADashboard from './pages/dashboards/CPADashboard';
@@ -26,15 +26,21 @@ import { useAuth } from './context/AuthContext';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-brand-600 font-bold">Loading...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-brand-600 font-bold">Loading Platform...</div>;
   if (!user) return <Navigate to="/login" />;
   return <>{children}</>;
 };
 
 const RoleRouter = () => {
   const { profile, loading } = useAuth();
-  if (loading) return <div>Loading...</div>;
-  if (!profile) return <Navigate to="/login" />;
+  
+  // FIX: If loading, just wait. Don't redirect.
+  if (loading) return <div className="p-10 text-gray-400">Loading Profile Data...</div>;
+  
+  // FIX: If profile is missing but user exists, don't kick to login (loops). 
+  // Show a "Creating Profile" state or fallback.
+  if (!profile) return <div className="p-10 text-gray-400">Setting up your account...</div>;
+
   if (profile.role === 'admin') return <AdminDashboard />;
   if (profile.role === 'cpa') return <CPADashboard />;
   return <SMBDashboard />;
@@ -47,8 +53,6 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/pricing" element={<Pricing />} />
-        
-        {/* FIX: Use AuthPage for login since LoginPage was removed */}
         <Route path="/login" element={<AuthPage type="login" />} />
         <Route path="/signup/:role" element={<AuthPage type="signup" />} />
         

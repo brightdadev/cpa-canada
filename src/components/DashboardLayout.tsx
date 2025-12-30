@@ -7,6 +7,7 @@ import {
   LogOut, Menu, X, Bell, Search, UserCircle, ChevronLeft, ChevronRight, Folder, Users 
 } from 'lucide-react';
 import Logo from '../assets/cpacanada.svg';
+import UserTour from './UserTour'; // <--- NEW IMPORT
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { profile, user, signOut } = useAuth();
@@ -76,11 +77,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      {/* TOUR GUIDE - Runs automatically if needed */}
+      <UserTour /> 
+
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 bg-white border-r border-gray-200 transform transition-all duration-300 ease-in-out flex flex-col ${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0'} ${collapsed ? 'lg:w-20' : 'lg:w-64'}`}>
-        
-        {/* LOGO AREA - INCREASED SIZE */}
         <div className={`h-24 flex items-center border-b border-gray-100 ${collapsed ? 'justify-center px-0' : 'px-6'}`}>
            {collapsed ? (
              <div className="w-10 h-10 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">C</div>
@@ -96,7 +98,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {isAdmin ? (
              <>
                <NavItem to="/dashboard" icon={LayoutDashboard} label="Command Center" />
-               {/* System Alerts Removed as requested */}
              </>
           ) : (
              <>
@@ -151,11 +152,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search orders..." className="bg-transparent border-none focus:ring-0 text-sm ml-2 w-full outline-none text-gray-700 placeholder-gray-400" />
           </form>
           <div className="flex items-center gap-4">
-            <Link 
-              to="/dashboard/notifications" 
-              onClick={() => setHasUnread(false)} 
-              className="relative p-2 text-gray-400 hover:text-brand-600 transition"
-            >
+            <Link to="/dashboard/notifications" className="relative p-2 text-gray-400 hover:text-brand-600 transition">
               <Bell size={20} />
               {hasUnread && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white shadow-sm"></span>}
             </Link>
